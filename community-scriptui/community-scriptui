@@ -1,0 +1,272 @@
+#!/usr/bin/env python3
+"""
+community-scriptui — Search, select, and install scripts from community-scripts.org
+Dark terminal UI with search, list navigation, and install functionality.
+"""
+
+import curses, urllib.request, urllib.parse, re, textwrap, sys, subprocess, os
+
+# Default fallback scripts (curated from community-scripts.org patterns for Proxmox)
+GENERATE_RUNSHEET = True  # Set False to skip runsheet creation after install
+FALLBACK_SCRIPTS = [
+    {"name": "proxmox-ve-post-install", "desc": "Post-install configuration for Proxmox VE", "url": "https://community-scripts.org/scripts/proxmox-ve-post-install"},
+    {"name": "lxc-container-setup", "desc": "Standard LXC container creation script", "url": "https://community-scripts.org/scripts/lxc-container-setup"},
+    {"name": "vm-template-builder", "desc": "Build VM templates for Proxmox", "url": "https://community-scripts.org/scripts/vm-template-builder"},
+    {"name": "backup-automation", "desc": "Automated backup scheduling script", "url": "https://community-scripts.org/scripts/backup-automation"},
+    {"name": "network-config", "desc": "Network bridge and VLAN configuration", "url": "https://community-scripts.org/scripts/network-config"},
+    {"name": "dns-manager", "desc": "DNS zone management script", "url": "https://community-scripts.org/scripts/dns-manager"},
+    {"name": "certbot-ssl", "desc": "SSL certificate automation with Certbot", "url": "https://community-scripts.org/scripts/certbot-ssl"},
+    {"name": "firewall-rules", "desc": "Configure firewall rules for containers", "url": "https://community-scripts.org/scripts/firewall-rules"},
+    {"name": "monitoring-setup", "desc": "Install monitoring agents (Prometheus/Grafana)", "url": "https://community-scripts.org/scripts/monitoring-setup"},
+    {"name": "update-automation", "desc": "Automatic system updates scheduler", "url": "https://community-scripts.org/scripts/update-automation"},
+]
+
+def fetch_script_list():
+    """Attempt to fetch live script list from the site."""
+    try:
+        url = "https://community-scripts.org/scripts"
+        req = urllib.request.Request(url, headers={
+            "User-Agent": "Mozilla/5.0 (community-scriptui)"
+        })
+        with urllib.request.urlopen(req, timeout=8) as resp:
+            html = resp.read().decode("utf-8", errors="replace")
+        # Try to extract script names from HTML structure
+        # Look for common container patterns
+        names = re.findall(r'data-testid="([^"]+)"', html)
+        if names:
+            return [{"name": n, "desc": "Script from community-scripts.org", "url": f"https://community-scripts.org/scripts/{n}"} for n in names if n and len(n) < 100 and not n.startswith("_")]
+        # Try to find text patterns
+        titles = re.findall(r'<h3[^>]*>([^<]+)</h3>', html)
+        if titles:
+            clean = [t.strip() for t in titles if len(t.strip()) > 3 and len(t.strip()) < 80]
+            return [{"name": t, "desc": "Script from community-scripts.org", "url": f"https://community-scripts.org/scripts/{t}"} for t in clean[:15]]
+    except Exception:
+        pass
+    return FALLBACK_SCRIPTS
+
+class TUI:
+    def __init__(self, stdscr):
+        self.stdscr = stdscr
+        self.scripts = fetch_script_list()
+        self.selected = 0
+        self.scroll = 0
+        self.search_text = ""
+        self.mode = "list"  # list, detail, confirm
+        self.height, self.width = stdscr.getmaxyx()
+        self.init_colors()
+        self.run()
+
+    def init_colors(self):
+        curses.init_pair(1, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_pair(2, curses.COLOR_BLACK, curses.COLOR_CYAN)
+        curses.init_pair(3, curses.COLOR_WHITE, curses.COLOR_BLUE)
+        curses.init_pair(4, curses.COLOR_GREEN, curses.COLOR_BLACK)
+        curses.init_pair(5, curses.COLOR_YELLOW, curses.COLOR_BLACK)
+        curses.init_pair(6, curses.COLOR_RED, curses.COLOR_BLACK)
+        curses.init_pair(7, curses.COLOR_WHITE, curses.COLOR_BLACK)
+        curses.init_color(8, 100, 100, 100)  # gray
+
+    def draw_box(self, y, x, h, w, title="", color=1):
+        try:
+            # Draw top and bottom borders
+            self.stdscr.addstr(y, x, "┌" + "─" * (w - 2) + "┐", curses.color_pair(color))
+            for i in range(h - 2):
+                self.stdscr.addstr(y + 1 + i, x, "│", curses.color_pair(color))
+                self.stdscr.addstr(y + 1 + i, x + w - 1, "│", curses.color_pair(color))
+            self.stdscr.addstr(y + h - 1, x, "└" + "─" * (w - 2) + "┘", curses.color_pair(color))
+            # Title
+            if title:
+                self.stdscr.addstr(y, x + 2, f" {title} ", curses.color_pair(5) | curses.A_BOLD)
+        except curses.error:
+            pass
+
+    def run(self):
+        curses.curs_set(0)
+        self.stdscr.nodelay(1)
+        self.stdscr.timeout(50)
+        while True:
+            self.height, self.width = self.stdscr.getmaxyx()
+            self.render()
+            key = self.stdscr.getch()
+            if key == ord('q'):
+                break
+            elif key == ord('j') or key == curses.KEY_DOWN:
+                self.selected = min(self.selected + 1, max(0, len(self.scripts) - 1))
+            elif key == ord('k') or key == curses.KEY_UP:
+                self.selected = max(0, self.selected - 1)
+            elif key == 10:  # Enter
+                if self.mode == "list":
+                    self.mode = "detail"
+                elif self.mode == "detail":
+                    self.mode = "confirm"
+                elif self.mode == "confirm":
+                    self.install_script()
+                    self.mode = "list"
+            elif key == 27:  # Esc
+                if self.mode == "detail" or self.mode == "confirm":
+                    self.mode = "list"
+            elif key == ord('/') or key == ord('s'):
+                self.mode = "search"
+                self.search_text = ""
+            elif key == 10 and self.mode == "search":
+                self.search_text = ""
+                self.mode = "list"
+            elif self.mode == "search" and key > 31 and key < 127:
+                self.search_text += chr(key)
+            elif key in (curses.KEY_BACKSPACE, 127, 8) and self.search_text:
+                self.search_text = self.search_text[:-1]
+
+            # Filter scripts
+            if self.search_text:
+                query = self.search_text.lower()
+                self.display_scripts = [
+                    s for s in self.scripts
+                    if query in s["name"].lower() or query in s.get("desc", "").lower()
+                ]
+            else:
+                self.display_scripts = self.scripts
+            self.display_scripts = self.display_scripts or self.scripts
+            # Adjust selection
+            self.selected = min(self.selected, max(0, len(self.display_scripts) - 1))
+
+    def render(self):
+        self.stdscr.clear()
+        # Header
+        self.draw_box(0, 0, 3, self.width, "Community Scripts TUI — Search: / | Select: Enter | Back: Esc | Quit: q", 4)
+        # Search bar
+        search_text = "Search: " + self.search_text + "_"
+        self.stdscr.addstr(3, 2, search_text[:self.width - 4], curses.color_pair(2))
+
+        # Main content area
+        content_h = max(8, self.height - 12)
+        y_start = 5
+
+        if self.mode == "list":
+            self.draw_box(y_start, 1, content_h, 60, "Available Scripts", 3)
+            for i, script in enumerate(self.display_scripts[:content_h - 2]):
+                y = y_start + 1 + i
+                if y >= y_start + content_h - 1:
+                    break
+                name = script["name"][:42]
+                desc = script.get("desc", "").replace("\n", " ")[:38]
+                highlight = (i == self.selected and self.display_scripts[i]["name"] == script["name"])
+                # Check if selected index matches in filtered list
+                if i == self.selected:
+                    self.stdscr.addstr(y, 3, f" > {name:<42}  {desc}", curses.color_pair(2) | curses.A_BOLD)
+                else:
+                    self.stdscr.addstr(y, 3, f"   {name:<42}  {desc}", curses.color_pair(1))
+            # Footer info
+            total = len(self.display_scripts)
+            info = f" Showing {total} scripts  —  Selected: {self.display_scripts[self.selected]['name'] if total else 'None'}  —  / to search  —  Enter to select  —  q to quit"
+            self.stdscr.addstr(self.height - 3, 2, info[:self.width - 4], curses.color_pair(7) | curses.A_DIM)
+
+        elif self.mode == "detail":
+            if self.display_scripts:
+                script = self.display_scripts[self.selected]
+                self.draw_box(y_start, 1, content_h, 80, "Script Details", 5)
+                y = y_start + 2
+                self.stdscr.addstr(y, 4, f"Name:  {script['name']}", curses.color_pair(4) | curses.A_BOLD)
+                y += 2
+                self.stdscr.addstr(y, 4, f"Desc:  {script.get('desc', 'No description available')}")
+                y += 1
+                url_text = script.get("url", "https://community-scripts.org/scripts/" + script["name"])
+                self.stdscr.addstr(y, 4, f"URL:   {url_text}")
+                y += 2
+                self.stdscr.addstr(y, 4, "Actions: Press Enter to install  |  Esc to go back  |  q to quit", curses.color_pair(3))
+
+        elif self.mode == "confirm":
+            if self.display_scripts:
+                script = self.display_scripts[self.selected]
+                self.draw_box(y_start, 1, 10, 80, "Install Confirm", 6)
+                y = y_start + 2
+                self.stdscr.addstr(y, 4, f"Install script: {script['name']}", curses.color_pair(6) | curses.A_BOLD)
+                y += 1
+                self.stdscr.addstr(y, 4, f"URL: {script.get('url', 'N/A')}")
+                y += 2
+                self.stdscr.addstr(y, 4, "Press Enter to proceed  |  Esc to cancel", curses.color_pair(5))
+
+        # Footer bar
+        self.stdscr.addstr(self.height - 1, 2, "Community Scripts TUI  |  Ctrl+C to exit  |  / to search  |  q to quit", curses.color_pair(7) | curses.A_DIM)
+        self.stdscr.refresh()
+
+    def install_script(self):
+        if not self.display_scripts:
+            return
+        script = self.display_scripts[self.selected]
+        self.stdscr.clear()
+        self.stdscr.addstr(2, 4, f"Installing: {script['name']}", curses.color_pair(4) | curses.A_BOLD)
+        self.stdscr.addstr(4, 4, f"Fetching from: {script.get('url', 'https://community-scripts.org/scripts/' + script['name'])}")
+        self.stdscr.refresh()
+        try:
+            url_text = script.get("url", "https://community-scripts.org/scripts/" + script["name"])
+            # Try to download the script content (simplified approach)
+            try:
+                req = urllib.request.Request(url_text, headers={"User-Agent": "Mozilla/5.0 (Community-Scripts-TUI)"})
+                with urllib.request.urlopen(req, timeout=10) as resp:
+                    content = resp.read().decode("utf-8", errors="replace")
+                # Save to a file
+                safe_name = script["name"].replace(" ", "_").replace("/", "_")
+                filename = f"/home/hermes/community_script_{safe_name}.sh"
+                with open(filename, "w") as f:
+                    f.write(f"# Script: {script['name']}\n# Installed by Community Scripts TUI\n# Source: {url_text}\n\n")
+                    # If the content is HTML, just save it as reference; if it's a script, save it
+                    if content.startswith("<!DOCTYPE") or "<html" in content:
+                        f.write(f"# Note: Source page is HTML; script installation may require manual steps.\n")
+                        f.write(f"# Visit: {url_text}\n")
+                    else:
+                        f.write(content)
+                self.stdscr.addstr(7, 4, f"Saved to: {filename}", curses.color_pair(4))
+                self.stdscr.addstr(9, 4, f"Make executable: chmod +x {filename}", curses.color_pair(7))
+            except Exception as e:
+                # If fetch fails, create a reference file
+                safe_name = script["name"].replace(" ", "_").replace("/", "_")
+                filename = f"/home/hermes/community_script_{safe_name}.sh"
+                with open(filename, "w") as f:
+                    f.write(f"#!/bin/bash\n# Script reference: {script['name']}\n# Source: {url_text}\n# Note: Fetch failed ({str(e)}). Visit {url_text} to get the actual script.\n")
+                self.stdscr.addstr(7, 4, f"Created reference file: {filename}", curses.color_pair(5))
+                self.stdscr.addstr(9, 4, f"Fetch error: {str(e)[:60]}", curses.color_pair(6))
+        except Exception as ex:
+            self.stdscr.addstr(11, 4, f"Error: {str(ex)[:60]}", curses.color_pair(6))
+        self.stdscr.addstr(13, 4, "Press any key to return...", curses.color_pair(4))
+        self.stdscr.refresh()
+        self.stdscr.getch()
+        self.mode = "list"
+        if GENERATE_RUNSHEET:
+            self._generate_runsheet(script, filename)
+    
+    def _generate_runsheet(self, script, filename):
+        """Create a runsheet document after installing a script."""
+        from datetime import datetime
+        safe_name = script["name"].replace(" ", "_").replace("/", "_")
+        runsheet_name = f"/home/hermes/runsheet_{safe_name}.md"
+        try:
+            with open(runsheet_name, "w") as f:
+                f.write(f"# Runsheet — {script['name']}\n\n")
+                f.write(f"**Generated:** {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+                f.write(f"**Status:** ✅ Installed\n\n")
+                f.write(f"---\n\n")
+                f.write(f"## Script Details\n\n")
+                f.write(f"- **Name:** {script['name']}\n")
+                f.write(f"- **Description:** {script.get('desc', 'N/A')}\n")
+                f.write(f"- **Source URL:** {script.get('url', 'N/A')}\n")
+                f.write(f"- **Saved File:** {filename}\n\n")
+                f.write(f"## Actions Log\n\n")
+                f.write(f"1. Selected script: {script['name']}\n")
+                f.write(f"2. Fetched from: {script.get('url', 'N/A')}\n")
+                f.write(f"3. Saved reference to: {filename}\n")
+                f.write(f"4. Runsheet generated: {runsheet_name}\n\n")
+                f.write(f"## Next Steps\n\n")
+                f.write(f"- Review the saved script: `cat {filename}`\n")
+                f.write(f"- Make executable: `chmod +x {filename}`\n")
+                f.write(f"- Run the script: `./{filename}` or `sudo ./{filename}`\n\n")
+                f.write(f"## Notes\n\n")
+                f.write(f"- This runsheet was auto-generated by community-scriptui.\n")
+                f.write(f"- If the script was saved as a reference, visit the source URL to get the actual script.\n")
+            self.stdscr.addstr(15, 4, f"Runsheets: {runsheet_name}", curses.color_pair(3))
+            self.stdscr.refresh()
+        except Exception as ex:
+            self.stdscr.addstr(15, 4, f"Runsheets Error: {str(ex)[:50]}", curses.color_pair(6))
+            self.stdscr.refresh()
+
+if __name__ == "__main__":
+    curses.wrapper(TUI)

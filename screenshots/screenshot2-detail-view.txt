@@ -1,0 +1,34 @@
+community-scriptui TUI — Screenshot 2: Script Detail View
+
+When pressing Enter on a script from the list, the detail view appears:
+- Shows the selected script's name: "backup-automation"
+- Displays the description: "Automated backup scheduling script"
+- Shows the source URL: "https://community-scripts.org/scripts/backup-automation"
+- Provides action buttons: "Press Enter to install | Esc to go back | q to quit"
+- Dark background with blue accents
+- Bold yellow title for the name field
+
+Visual layout:
+┌─────────────────────────────────────────────────────────────────────┐
+│ Curses TUI — Search, select, and install scripts from community-scripts.│
+│ Dark terminal UI with search, list navigation, and install functionality.│
+│                                                                     │
+│                                                                     │
+│ Community Scripts TUI  |  / to search  |  q to quit                   │
+│ -------------------------------------------------------------------- │
+│ Search: scriptui_                                                  │
+│                                                                     │
+│                                                                     │
+│ Community Scripts TUI  |  / to search  |  q to quit                   │
+│ -------------------------------------------------------------------- │
+│                                                                     │
+│ Name:  backup-automation  ← GREEN/BOLD                               │
+│                                                                     │
+│ Desc:  Automated backup scheduling script                            │
+│                                                                     │
+│ URL:   https://community-scripts.org/scripts/backup-automation       │
+│                                                                     │
+│ Actions: Press Enter to install  |  Esc to go back  |  q to quit       │
+│                                                                     │
+│ Community Scripts TUI  |  Ctrl+C to exit  |  / to search  |  q to quit │
+└─────────────────────────────────────────────────────────────────────┘

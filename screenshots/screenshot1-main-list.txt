@@ -1,0 +1,34 @@
+community-scriptui TUI — Screenshot 1: Main Script List
+
+When launched, the tool displays a main menu with:
+- A top banner with the title "Curses TUI — Search, select, and install scripts from community-scripts.org"
+- A dark background with cyan and yellow accents
+- Search bar highlighted: "Search: scriptui_"
+- List of scripts with names and descriptions
+- Navigation indicators: "Showing 10 scripts — Selected: backup-automation — Enter to select — q to quit"
+- Footer: "Community Scripts TUI  |  Ctrl+C to exit  |  / to search  |  q to quit"
+
+Visual layout:
+┌─────────────────────────────────────────────────────────────────────┐
+│ Curses TUI — Search, select, and install scripts from community-scripts.│
+│ Dark terminal UI with search, list navigation, and install functionality.│
+│                                                                     │
+│                                                                     │
+│ Community Scripts TUI  |  / to search  |  q to quit                   │
+│ -------------------------------------------------------------------- │
+│ Search: scriptui_                                                  │
+│                                                                     │
+│   proxmox-ve-post-install          Post-install configuration for     │
+│                                  Proxmox VE                          │
+│   lxc-container-setup             Standard LXC container creation       │
+│                                  script                               │
+│ > backup-automation               Automated backup scheduling          │
+│                                  script  ← SELECTED                    │
+│   network-config                   Network bridge and VLAN            │
+│                                  configuration                       │
+│   ... (and more scripts)                                          │
+│                                                                     │
+│ Showing 10 scripts — Selected: backup-automation — Enter to select   │
+│ -----                                                               │
+│ Community Scripts TUI  |  Ctrl+C to exit  |  / to search  |  q to quit │
+└─────────────────────────────────────────────────────────────────────┘

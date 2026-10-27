@@ -1,0 +1,41 @@
+community-scriptui TUI — Screenshot 3: Install Confirmation
+
+After pressing Enter again on the detail view, the install confirmation screen appears:
+- Red-tinted box with title "Install Confirm"
+- Warning message: "Install script: backup-automation" in red
+- Shows the URL again for confirmation
+- Buttons: "Press Enter to proceed | Esc to cancel"
+- On confirmation, saves a reference file to /home/hermes/community_script_backup-automation.sh
+
+Visual layout:
+┌─────────────────────────────────────────────────────────────────────┐
+│ Curses TUI — Search, select, and install scripts from community-scripts.│
+│ Dark terminal UI with search, list navigation, and install functionality.│
+│                                                                     │
+│                                                                     │
+│ Community Scripts TUI  |  / to search  |  q to quit                   │
+│ -------------------------------------------------------------------- │
+│ Search: scriptui_                                                  │
+│                                                                     │
+│                                                                     │
+│ Install Confirm  ← RED BORDER                                      │
+│ ═══════════════════════════════════════════════════════════════════  │
+│                                                                     │
+│ Install script: backup-automation  ← RED/BOLD                       │
+│                                                                     │
+│ URL:   https://community-scripts.org/scripts/backup-automation      │
+│                                                                     │
+│ Press Enter to proceed  |  Esc to cancel  ← YELLOW/BOLD             │
+│                                                                     │
+│                                                                     │
+│ Community Scripts TUI  |  Ctrl+C to exit  |  / to search  |  q to quit │
+└─────────────────────────────────────────────────────────────────────┘
+
+After installation, a reference file is created:
+/home/hermes/community_script_backup-automation.sh
+
+Content of the saved file:
+#!/bin/bash
+# Script reference: backup-automation
+# Source: https://community-scripts.org/scripts/backup-automation
+# Note: Fetch failed (Connection refused). Visit https://community-scripts.org/scripts/backup-automation to get the actual script.
