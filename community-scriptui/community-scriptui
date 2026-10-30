@@ -48,6 +48,7 @@ class TUI:
     def __init__(self, stdscr):
         self.stdscr = stdscr
         self.scripts = fetch_script_list()
+        self.display_scripts = self.scripts  # Initialize display_scripts immediately
         self.selected = 0
         self.scroll = 0
         self.search_text = ""
